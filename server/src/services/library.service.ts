@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { R_OK } from 'node:constants';
 import { Stats } from 'node:fs';
-import path, { basename, isAbsolute, parse } from 'node:path';
+import path, { basename, isAbsolute, resolve, parse } from 'node:path';
 import picomatch from 'picomatch';
 import { JOBS_LIBRARY_PAGINATION_SIZE } from 'src/constants';
 import { StorageCore } from 'src/cores/storage.core';
@@ -24,12 +24,71 @@ import { BaseService } from 'src/services/base.service';
 import { JobOf } from 'src/types';
 import { mimeTypes } from 'src/utils/mime-types';
 import { handlePromiseError } from 'src/utils/misc';
+import { StorageRepository } from 'src/repositories/storage.repository';
+
+export class LibraryPath {
+  private readonly path: string;
+
+  private constructor(path: string) {
+    this.path = path;
+  }
+
+  static create(path: string): { 
+    isValid: boolean; 
+    message?: string; 
+    libraryPath?: LibraryPath 
+  } {
+    
+    if (StorageCore.isImmichPath(path)) {
+      return { isValid: false, message: "Cannot use media upload folder for external libraries" };
+    }
+
+    if (!isAbsolute(path)) {
+      return { isValid: false, message: `Import path must be absolute, try ${resolve(path)}` };
+    }
+
+    return { isValid: true, libraryPath: new LibraryPath(path) };
+  }
+
+  get value(): string {
+    return this.path;
+  }
+}
+
+
+@Injectable()
+export class LibraryPathValidator {
+  constructor(private readonly storageRepository: StorageRepository) {}
+
+  async validate(path: LibraryPath): Promise<{ isValid: boolean; message?: string }> {
+    try {
+      const stat = await this.storageRepository.stat(path.value);
+      if (!stat.isDirectory()) {
+        return { isValid: false, message: 'Not a directory' };
+      }
+
+      const access = await this.storageRepository.checkFileExists(path.value, R_OK);
+      if (!access) {
+        return { isValid: false, message: 'Lacking read permission for folder' };
+      }
+
+      return { isValid: true };
+    } catch (error: any) {
+      if (error.code === 'ENOENT') {
+        return { isValid: false, message: 'Path does not exist (ENOENT)' };
+      }
+      return { isValid: false, message: String(error) };
+    }
+  }
+}
 
 @Injectable()
 export class LibraryService extends BaseService {
   private watchLibraries = false;
   private lock = false;
   private watchers: Record<string, () => Promise<void>> = {};
+
+  private libraryPathValidator = new LibraryPathValidator(this.storageRepository);
 
   @OnEvent({ name: 'config.init', workers: [ImmichWorker.MICROSERVICES] })
   async onConfigInit({
@@ -262,40 +321,27 @@ export class LibraryService extends BaseService {
     const validation = new ValidateLibraryImportPathResponseDto();
     validation.importPath = importPath;
 
-    if (StorageCore.isImmichPath(importPath)) {
-      validation.message = 'Cannot use media upload folder for external libraries';
-      return validation;
-    }
-
-    if (!isAbsolute(importPath)) {
-      validation.message = `Import path must be absolute, try ${path.resolve(importPath)}`;
-      return validation;
-    }
-
     try {
-      const stat = await this.storageRepository.stat(importPath);
-      if (!stat.isDirectory()) {
-        validation.message = 'Not a directory';
+      const libraryPath = LibraryPath.create(importPath);
+
+      if (!libraryPath.isValid) {
+        validation.message = libraryPath.message;
         return validation;
       }
+
+      const result = await this.libraryPathValidator.validate(libraryPath.libraryPath!);
+
+      if (!result.isValid) {
+        validation.message = result.message;
+        return validation;
+      }
+
+      validation.isValid = true;
+      return validation;
     } catch (error: any) {
-      if (error.code === 'ENOENT') {
-        validation.message = 'Path does not exist (ENOENT)';
-        return validation;
-      }
-      validation.message = String(error);
+      validation.message = error.message;
       return validation;
     }
-
-    const access = await this.storageRepository.checkFileExists(importPath, R_OK);
-
-    if (!access) {
-      validation.message = 'Lacking read permission for folder';
-      return validation;
-    }
-
-    validation.isValid = true;
-    return validation;
   }
 
   async validate(id: string, dto: ValidateLibraryDto): Promise<ValidateLibraryResponseDto> {
