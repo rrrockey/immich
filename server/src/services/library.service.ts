@@ -38,9 +38,9 @@ export class LibraryService extends BaseService {
       library: { watch, scan },
     },
   }: ArgOf<'config.init'>) {
-    // This ensures that library watching only occurs in one microservice
     try {
       this.lock = await Promise.race([  // Ensures that the tryLock() call is limited to 5 seconds
+        // This ensures that library watching only occurs in one microservice
         this.databaseRepository.tryLock(DatabaseLock.Library),
         new Promise<boolean>((_, reject) =>
           setTimeout(() => reject(new Error('Database lock timeout')), 5000), // 5-second timeout
