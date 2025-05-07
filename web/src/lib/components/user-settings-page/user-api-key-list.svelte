@@ -126,7 +126,7 @@
     </div>
 
     {#if keys.length > 0}
-      <table class="w-full text-left">
+      <table class="w-full text-start">
         <thead
           class="mb-4 flex h-12 w-full rounded-md border bg-gray-50 text-immich-primary dark:border-immich-dark-gray dark:bg-immich-dark-gray dark:text-immich-dark-primary"
         >
@@ -140,9 +140,7 @@
           {#each keys as key, index (key.id)}
             <tr
               class={`flex h-[80px] w-full place-items-center text-center dark:text-immich-dark-fg ${
-                index % 2 == 0
-                  ? 'bg-immich-gray dark:bg-immich-dark-gray/75'
-                  : 'bg-immich-bg dark:bg-immich-dark-gray/50'
+                index % 2 == 0 ? 'bg-subtle' : 'bg-immich-bg dark:bg-immich-dark-gray/50'
               }`}
             >
               <td class="w-1/3 text-ellipsis px-4 text-sm">{key.name}</td>
