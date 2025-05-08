@@ -38,11 +38,13 @@ export class LibraryPath {
     message?: string; 
     libraryPath?: LibraryPath 
   } {
-    
+
+    // Disallow internal Immich upload folder
     if (StorageCore.isImmichPath(path)) {
       return { isValid: false, message: "Cannot use media upload folder for external libraries" };
     }
 
+    // Enforce absolute paths
     if (!isAbsolute(path)) {
       return { isValid: false, message: `Import path must be absolute, try ${resolve(path)}` };
     }
@@ -50,6 +52,7 @@ export class LibraryPath {
     return { isValid: true, libraryPath: new LibraryPath(path) };
   }
 
+  // Retrieve the validated filesystem path
   get value(): string {
     return this.path;
   }
@@ -84,9 +87,9 @@ export class LibraryPathValidator {
 
 @Injectable()
 export class LibraryService extends BaseService {
-  private watchLibraries = false;
-  private lock = false;
-  private watchers: Record<string, () => Promise<void>> = {};
+  private watchLibraries = false;    // Flag to enable filesystem watching
+  private lock = false;              // Ensures only one instance watches
+  private watchers: Record<string, () => Promise<void>> = {};  // Active watcher cleanup handlers
 
   private libraryPathValidator = new LibraryPathValidator(this.storageRepository);
 
@@ -149,6 +152,7 @@ export class LibraryService extends BaseService {
 
     this.logger.log(`Starting to watch library ${library.id} with import path(s) ${library.importPaths}`);
 
+    // Build a glob matcher for supported media extensions
     const matcher = picomatch(`**/*{${mimeTypes.getSupportedFileExtensions().join(',')}}`, {
       nocase: true,
       ignore: library.exclusionPatterns,
