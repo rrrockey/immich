@@ -32,6 +32,8 @@ export class LibraryService extends BaseService {
   private lock = false;
   private watchers: Record<string, () => Promise<void>> = {};
 
+  // Only one microservice instance will acquire the "Library" database lock
+  // and, if configured, set up scanning and watching of libraries
   @OnEvent({ name: 'config.init', workers: [ImmichWorker.MICROSERVICES] })
   async onConfigInit({
     newConfig: {
@@ -51,13 +53,16 @@ export class LibraryService extends BaseService {
       this.lock = false; // Ensure lock is set to false in case of failure
     }
 
+    // Only watch if we hold the lock and watching is enabled in config
     this.watchLibraries = this.lock && watch.enabled;
 
+    // If we hold the lock, schedule peridoci library scans
     if (this.lock) {
       this.cronRepository.create({
         name: 'libraryScan',
         expression: scan.cronExpression,
         onTick: () =>
+          // Enqueue a full library scan job, logging any errors
           handlePromiseError(this.jobRepository.queue({ name: JobName.LIBRARY_QUEUE_SCAN_ALL }), this.logger),
         start: scan.enabled,
       });
@@ -74,6 +79,7 @@ export class LibraryService extends BaseService {
       return;
     }
 
+    // Update the existing cron job with new scan expression or enable/disable
     this.cronRepository.update({
       name: 'libraryScan',
       expression: library.scan.cronExpression,
