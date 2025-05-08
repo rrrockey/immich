@@ -56,7 +56,7 @@ export class LibraryService extends BaseService {
     // Only watch if we hold the lock and watching is enabled in config
     this.watchLibraries = this.lock && watch.enabled;
 
-    // If we hold the lock, schedule peridoci library scans
+    // If we hold the lock, schedule periodic library scans
     if (this.lock) {
       this.cronRepository.create({
         name: 'libraryScan',
